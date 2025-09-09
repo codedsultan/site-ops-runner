@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write       # for keyless cosign (optional)
+      id-token: write
     outputs:
       image_digest: ${{ steps.digest.outputs.digest }}
       version: ${{ steps.ver.outputs.ver }}
@@ -27,6 +27,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Debug ref
+        run: |
+          echo "GITHUB_REF_TYPE=$GITHUB_REF_TYPE"
+          echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
 
       - name: Resolve version (from tag or VERSION file)
         id: ver
@@ -70,8 +75,8 @@ jobs:
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.version=v${{ steps.ver.outputs.ver }}
             org.opencontainers.image.revision=${{ github.sha }}
-          provenance: false    # set true if you want buildkit attestations
-          sbom: false          # SBOM generated separately
+          provenance: false
+          sbom: false
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
@@ -79,7 +84,6 @@ jobs:
         id: digest
         run: echo "digest=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
-      # Optional: SBOM & vuln scan
       - name: Generate SBOM (syft)
         uses: anchore/sbom-action@v0
         with:
@@ -94,7 +98,6 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
-      # Optional: sign the image via keyless cosign
       - name: Cosign sign
         if: startsWith(github.ref, 'refs/tags/')
         env:
