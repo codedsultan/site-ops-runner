@@ -10,5 +10,8 @@ RUN apk add --no-cache \
 # Make sudo non-interactive
 RUN echo "root ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/runner && chmod 440 /etc/sudoers.d/runner
 
+# Put project assets in the image
 WORKDIR /work
+COPY smoke-tests/ /work/smoke-tests/
+RUN chmod +x /work/smoke-tests/*.sh
 ENTRYPOINT ["/bin/bash","-lc"]
