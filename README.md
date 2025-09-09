@@ -4,21 +4,59 @@ A tiny, reproducible toolbox image for CI/CD and site ops.
 Built on `alpine:3.20` with common CLI tools (bash, curl, jq, yq, openssl, git, docker-cli, compose, etc.).
 Shipped as **multi-arch** (linux/amd64, linux/arm64), **scanned**, **optionally signed**, and **smoke-tested**.
 
-## Why
+### Why
 
 * Lock the execution environment for ops scripts.
-* Version like a product (SemVer).
+* Version like a product (SemVer) and publish on **Git tags**.
 * Safe roll-forwards/rollbacks via **tag + digest** pinning.
 
-## Versioning
+### Versioning & Releases (new)
 
-* Semantic Versioning (**MAJOR.MINOR.PATCH**), e.g. `1.2.0`.
-* CI tags:
+We use **Semantic Versioning**: `MAJOR.MINOR.PATCH`.
 
-  * `ghcr.io/<org>/site-ops-runner:v1.2.0`
-  * `ghcr.io/<org>/site-ops-runner:1` (major)
-  * `ghcr.io/<org>/site-ops-runner:1.2` (minor)
-* Bump **VERSION** and commit to trigger a release.
+**Source of truth**
+
+* The repo has a simple `VERSION` file (e.g., `1.2.3`) for humans and scripts.
+* A separate workflow automatically creates a Git tag `v<VERSION>` when `VERSION` changes on `main`.
+* **Builds** run when a tag like `v1.2.3` is pushed. Weekly rebuilds reuse the current `VERSION` without changing tags.
+
+**Tags pushed to GHCR**
+
+* `ghcr.io/<org>/site-ops-runner:v1.2.3`
+* `ghcr.io/<org>/site-ops-runner:1.2`
+* `ghcr.io/<org>/site-ops-runner:1`
+
+**Bumping versions**
+
+1. Edit `VERSION` (pick MAJOR/MINOR/PATCH).
+2. Commit and push to `main`.
+   The “tag-on-version-change” workflow creates `vX.Y.Z`.
+3. The “Build & Publish” workflow builds and pushes the image with the three tags above.
+
+### Reproducible pulls
+
+Always pin to **digest**:
+
+```bash
+# Example: pin major + digest from the build output
+IMG=ghcr.io/<org>/site-ops-runner:1@sha256:<digest>
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$IMG" /work/smoke-tests/verify-tools.sh
+```
+
+### CI/CD
+
+* **Trigger:** Git tags `v*`, weekly rebuilds, or manual runs.
+* **Build:** Multi-arch (amd64, arm64) via Buildx.
+* **Assurance:** SBOM (Syft) + vulnerability scan (Trivy).
+* **Optional:** Keyless signing (Cosign).
+* **Smoke tests:** Runs `/work/smoke-tests/verify-tools.sh` inside the built image.
+
+### Reuse in other projects
+
+* Copy this repo structure and workflows.
+* Keep a plain `VERSION` file.
+* Adopt the same tag-driven build pattern so any repo can publish deterministic, signed toolbox images.
+* Pin images by **major tag + digest** in your automation for safe updates.
 
 ## Using the image
 

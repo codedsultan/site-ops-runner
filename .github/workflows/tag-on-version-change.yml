@@ -1,0 +1,34 @@
+name: Tag when VERSION changes
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'VERSION' ]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: v
+        run: echo "ver=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Create tag v${{ steps.v.outputs.ver }} if missing
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ver = process.env.VER || "${{ steps.v.outputs.ver }}";
+            const tag = `v${ver}`;
+            try {
+              await github.rest.git.getRef({ owner: context.repo.owner, repo: context.repo.repo, ref: `tags/${tag}` });
+              core.info(`Tag ${tag} already exists.`);
+            } catch {
+              await github.rest.git.createRef({
+                owner: context.repo.owner, repo: context.repo.repo,
+                ref: `refs/tags/${tag}`,
+                sha: context.sha
+              });
+              core.info(`Created tag ${tag}.`);
+            }

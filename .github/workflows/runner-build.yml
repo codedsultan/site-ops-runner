@@ -3,15 +3,10 @@ name: Build & Publish runner
 
 on:
   push:
-    paths:
-      - 'Dockerfile.runner'
-      - 'smoke-tests/**'
-      - 'VERSION'
-      - '.github/workflows/runner-build.yml'
-    branches: [ main ]
-  workflow_dispatch:
+    tags: [ 'v*' ]         # build on SemVer tags (e.g., v1.2.3)
   schedule:
-    - cron: '0 3 * * 1'   # weekly rebuild (security updates)
+    - cron: '0 3 * * 1'    # weekly rebuild (security updates)
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/site-ops-runner
@@ -22,17 +17,29 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write  # for keyless cosign (optional)
+      id-token: write       # for keyless cosign (optional)
+    outputs:
+      image_digest: ${{ steps.digest.outputs.digest }}
+      version: ${{ steps.ver.outputs.ver }}
+      major: ${{ steps.ver.outputs.major }}
+      minor: ${{ steps.ver.outputs.minor }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Read version
-        id: v
+      - name: Resolve version (from tag or VERSION file)
+        id: ver
+        shell: bash
         run: |
-          VER="$(cat VERSION)"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="$(cat VERSION)"
+          fi
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "minor=${VER%.*}" >> "$GITHUB_OUTPUT"
           echo "major=${VER%%.*}" >> "$GITHUB_OUTPUT"
+          echo "minor=${VER%.*}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -56,22 +63,21 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:v${{ steps.v.outputs.ver }}
-            ${{ env.IMAGE_NAME }}:${{ steps.v.outputs.major }}
-            ${{ env.IMAGE_NAME }}:${{ steps.v.outputs.minor }}
+            ${{ env.IMAGE_NAME }}:v${{ steps.ver.outputs.ver }}
+            ${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.major }}
+            ${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.minor }}
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
-            org.opencontainers.image.version=v${{ steps.v.outputs.ver }}
+            org.opencontainers.image.version=v${{ steps.ver.outputs.ver }}
             org.opencontainers.image.revision=${{ github.sha }}
-          provenance: false  # set true if you want buildkit attestations
-          sbom: false        # we’ll generate SBOM separately
+          provenance: false    # set true if you want buildkit attestations
+          sbom: false          # SBOM generated separately
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
       - name: Extract image digest
         id: digest
-        run: |
-          echo "digest=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+        run: echo "digest=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
       # Optional: SBOM & vuln scan
       - name: Generate SBOM (syft)
@@ -90,7 +96,7 @@ jobs:
 
       # Optional: sign the image via keyless cosign
       - name: Cosign sign
-        if: ${{ github.ref == 'refs/heads/main' }}
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
@@ -103,11 +109,11 @@ jobs:
     needs: build
     steps:
       - name: Pull runner image by digest
-        run: docker pull ${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
+        run: docker pull ${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image_digest }}
 
       - name: Run smoke tests inside runner
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            ${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} \
+            ${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image_digest }} \
             /work/smoke-tests/verify-tools.sh || exit 1

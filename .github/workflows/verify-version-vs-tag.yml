@@ -1,0 +1,17 @@
+name: Verify tag matches VERSION
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "file_v=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Compare
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          FILE_V="${{ steps.v.outputs.file_v }}"
+          [ "$TAG" = "$FILE_V" ] || { echo "Tag v$TAG != VERSION $FILE_V"; exit 1; }
