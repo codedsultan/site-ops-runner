@@ -4,6 +4,9 @@ name: Build & Publish runner
 on:
   push:
     tags: [ 'v*' ]         # build on SemVer tags (e.g., v1.2.3)
+  workflow_run:                    # when tag-on-version-change finishes
+    workflows: ["Tag when VERSION changes"]
+    types: [completed]
   schedule:
     - cron: '0 3 * * 1'    # weekly rebuild (security updates)
   workflow_dispatch:
